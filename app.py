@@ -10,7 +10,7 @@ import kagglehub
 
 
 st.set_page_config(
-    page_title = 'Conversation AI - BI Dashboard',
+    page_title = 'Python Assistant - talk to your data',
     layout = 'wide',
     initial_sidebar_state = 'expanded'
 )
@@ -19,7 +19,7 @@ st.set_page_config(
 def init_conenctions():
     "Setup OpenAI"
     llm_model="openai/gpt-oss-20b:groq"
-    api_key=os.environ.get('HF_TOKEN')
+    api_key=os.environ["HF_TOKEN"]
     base_url="https://router.huggingface.co/v1"
 
     client = OpenAI(
@@ -35,6 +35,7 @@ def load_data():
     file_path = os.path.join(dataset_dir, "train.csv")
     df = pd.read_csv(file_path)
     df['Order Date'] = pd.to_datetime(df['Order Date'], dayfirst=True)
+    df['Order Month'] = df['Order Date'].dt.to_period('M').astype(str)
     return df
 
 def get_df_info(df):
@@ -123,7 +124,40 @@ def execute_pandas_code(code,df):
 
 
 def main():
-    st.title("Conversation AI - BI Dashboard")
+    st.markdown(
+        """
+        <style>
+        /* Style for the metric cards */
+        [data-testid="stMetric"] {
+            background-color: #f0f2f6;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #1f77b4; /* Streamlit Blue accent */
+            transition: all 0.3s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+        /* Style for the KPI value to be larger and bold */
+        [data-testid="stMetricValue"] {
+            font-size: 2.5em !important;
+            font-weight: 700 !important;
+            color: #1f77b4; 
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("<h1><font color='#1f77b4'>Conversation AI</font> - BI Dashboard</h1>", unsafe_allow_html=True)
+
+
     client, llm_model = init_conenctions()
 
     try:
@@ -158,6 +192,95 @@ def main():
                             st.write(result)
             
             # st.sidebar.write(df.columns)
+            st.markdown("---")
+            st.caption("Example Questions")
+            st.markdown(
+                """
+                - Total Sales in 2017?
+                - Sales per Category?
+                - Average Sales for Furniture?
+                - Which country has the highest sales?
+                """
+            )
+
+
+            # --- Main Dashboard Layout ---
+        st.subheader("Key Performance Indicators")
+        
+        # 1. KPI Cards using columns for better layout (styling via CSS injection above)
+        total_sales = df['Sales'].sum()
+        total_orders = df['Order ID'].nunique()
+        
+        kpi_col1, kpi_col2 = st.columns(2)
+
+        with kpi_col1:
+            st.metric(label="Total Sales (USD)", value=f"${total_sales:,.2f}")
+        
+        with kpi_col2:
+            st.metric(label="Total Orders", value=f"{total_orders:,}")
+
+
+        # 2. Charts Section Layout
+        st.markdown("---")
+        st.subheader("Sales and Performance Deep Dive")
+
+        # Create two columns for the charts
+        chart_col1, chart_col2 = st.columns(2)
+
+
+        # Chart 1: Sales Over Time Chart (Left Column)
+        with chart_col1:
+            st.caption("Monthly Sales Trend")
+
+            # Aggregate sales by month
+            monthly_sales = df.groupby('Order Month')['Sales'].sum().reset_index()
+            monthly_sales['Order Month'] = pd.to_datetime(monthly_sales['Order Month']) 
+
+            fig_time = px.line(
+                monthly_sales, 
+                x='Order Month', 
+                y='Sales', 
+                title='Total Sales Over Time',
+                markers=True
+            )
+            
+            fig_time.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis_title="Order Month",
+                yaxis_title="Total Sales",
+                margin=dict(l=20, r=20, t=40, b=20)
+            )
+            fig_time.update_traces(line_color='#1f77b4', line_width=2) # Blue color for the line
+
+            st.plotly_chart(fig_time, use_container_width=True)
+
+
+        # Chart 2: Sales by Product Category (Right Column)
+        with chart_col2:
+            st.caption("Sales Distribution by Product Category")
+            
+            # Aggregate sales by segment
+            segment_sales = df.groupby('Category')['Sales'].sum().reset_index()
+
+            fig_segment = px.pie(
+                segment_sales,
+                names='Category',
+                values='Sales',
+                title='Sales by Category',
+                hole=.3 # Creates a donut chart
+            )
+            
+            fig_segment.update_traces(textposition='inside', textinfo='percent+label')
+            fig_segment.update_layout(showlegend=True, margin=dict(l=20, r=20, t=40, b=20))
+
+            st.plotly_chart(fig_segment, use_container_width=True)
+
+
+        # 3. Data Preview (moved into an expander for cleanliness)
+        st.markdown("---")
+        with st.expander("Show Raw Data Preview"):
+            st.dataframe(df.head())
+
 
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
