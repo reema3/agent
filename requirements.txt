@@ -1,0 +1,7 @@
+streamlit 
+matplotlib 
+plotly 
+openai 
+kagglehub
+pandas
+numpy
