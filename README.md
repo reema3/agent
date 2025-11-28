@@ -114,6 +114,10 @@ This approach allows:
   
 	•	Faster exploratory analysis without manual coding
 
+<h2> Screenshot </h2>
+<img width="2850" height="1612" alt="image" src="https://github.com/user-attachments/assets/a0da5453-faf0-400e-95aa-40e96344db6d" />
+
+
 <h2> 🎯 Why I Built This</h2>
 
 I wanted to explore how LLMs can make analytics more accessible — especially for people who can interpret insights but aren’t comfortable writing SQL or Python.
