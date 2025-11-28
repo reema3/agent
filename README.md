@@ -22,8 +22,6 @@ Ask questions in plain English. The app interprets your query and returns:
   
 	•	Trends
   
-	•	Explanations
-  
 	•	Plots / charts
   
 	•	Breakdown tables
@@ -114,8 +112,6 @@ This approach allows:
 
 	•	Rewriting business questions into analytical tasks
   
-	•	Automated insights
-  
 	•	Faster exploratory analysis without manual coding
 
 <h2> 🎯 Why I Built This</h2>
@@ -134,10 +130,12 @@ This project helped me understand:
 
 Planned enhancements:
 
-	•	Provide Chat History
+	•	Automated Insights
+  
+	•	Python Code explanations
+	
+	•	Chat History
   
 	•	Provide memory to LLM
   
-	•	Add caching for faster repeated queries
-  
-	•	Deploy to Streamlit Cloud / HuggingFace Spaces
+	•	Deploy
