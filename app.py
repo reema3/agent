@@ -35,7 +35,7 @@ def load_data():
     file_path = os.path.join(dataset_dir, "train.csv")
     df = pd.read_csv(file_path)
     df['Order Date'] = pd.to_datetime(df['Order Date'], dayfirst=True)
-    df['Order Month'] = df['Order Date'].dt.to_period('M').astype(str)
+    # df['Order Month'] = df['Order Date'].dt.to_period('M').astype(str)
     return df
 
 def get_df_info(df):
@@ -66,6 +66,101 @@ def get_df_info(df):
         'metric' : ['Sales']
 
     }
+
+def user_wants_chart(question):
+
+    question_lower = question.lower()
+
+    chart_keywords = [
+        'chart','plot','graph','visualize','visualization',
+        'show me a chart', 'show chart', 'plot this','graph this',
+        'pie chart','bar chart','line chart','trend','show me visually',
+        'visual','diagram'
+    ]
+
+    return any(keyword in question_lower for keyword in chart_keywords)
+
+def generate_chart_from_result(result, question):
+    # Keywords to determine chart type
+    trend_keywords = ['trend', 'over time','daily','monthly','timeline','preogression']
+    comparison_keywords = ['compare', 'vs','versus', 'comparison']
+    distribution_keywords = ['by region','by product','breakdown', 'distribution']
+
+    question_lower = question.lower()
+
+    # Check if result is suitable for charting
+    if result is None or isinstance(result, (int, float, str)):
+        return None
+    
+    try:
+        # CASE 1: Time series data (has dates in index)
+        if isinstance(result, pd.Series) and pd.api.types.is_datetime64_any_dtype(result.index):
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=result.index,
+                y=result.values,
+                mode=' lines+markers',
+                name='Value',
+                line=dict(color='#667eea', width=2)
+                ))
+            fig.update_layout(
+                title="Trend Analysis",
+                xaxis_title="Date",
+                yaxis_title="Value",
+                height=400
+                )
+            return fig
+        
+         # CASE 2: Time series data (has dates in index)
+        elif isinstance(result, pd.Series) and len(result)>1:
+            # Check if it's better as pie or bar
+            if any(word in question_lower for word in distribution_keywords) and len(result)<=10:
+                # Pie chart for distribution
+                fig = px.pie(
+                    values=result.values,
+                    names=result.index,
+                    title="Distribution Analysis"
+                )
+            else:
+                # Bar chart for comparisón
+                fig = px.bar(
+                    x=result.index,
+                    y=result.values,
+                    title="Comparison Analysis", 
+                    color=result.values,
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(
+                    xaxis_title=result.index.name or "Category",
+                    yaxis_title="Value",
+                    height=400
+                )
+            return fig
+        
+        # CASE 3: DataFrame time series
+        elif isinstance(result, pd. DataFrame) and 'Order Date' in result. columns:
+            # Line chart for time series
+            value_cols = [col for col in result.columns if col != 'Order Date']
+            fig = go.Figure()
+            for col in value_cols:
+                fig.add_trace(go.Scatter(
+                    x=result ['Order Date'],
+                    y=result[col],
+                    mode= 'lines+markers',
+                    name=col
+                ))
+                fig.update_layout(
+                    title="Trend Analysis",
+                    xaxis_title="Date",
+                    yaxis_title="Value",
+                    height=400
+                )
+            return fig
+        
+
+    except Exception as e:
+        print(f"Chart generation error {e}")
+        return None
 
 def generate_pandas_code(client, llm_model,question,df_info):
 
@@ -155,7 +250,7 @@ def main():
         unsafe_allow_html=True
     )
 
-    st.markdown("<h1><font color='#1f77b4'>Conversation AI</font> - BI Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1><font color='#1f77b4'>Conversational BI Dashboard</font></h1>", unsafe_allow_html=True)
 
 
     client, llm_model = init_conenctions()
@@ -190,6 +285,14 @@ def main():
                                 st.code(code,language='python')
 
                             st.write(result)
+
+                            # Only generate chart if user asks for it
+                            if user_wants_chart(user_question):
+                                chart = generate_chart_from_result(result, user_question)
+                                if chart:
+                                   st.plotly_chart(chart, use_container_width=True)
+                                else:
+                                    st.info(" Unable to generate a chart for this data type. Try a different query.")
             
             # st.sidebar.write(df.columns)
             st.markdown("---")
@@ -233,6 +336,7 @@ def main():
             st.caption("Monthly Sales Trend")
 
             # Aggregate sales by month
+            df['Order Month'] = df['Order Date'].dt.to_period('M').astype(str)
             monthly_sales = df.groupby('Order Month')['Sales'].sum().reset_index()
             monthly_sales['Order Month'] = pd.to_datetime(monthly_sales['Order Month']) 
 
