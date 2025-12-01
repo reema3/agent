@@ -19,7 +19,7 @@ st.set_page_config(
 def init_conenctions():
     "Setup OpenAI"
     llm_model="openai/gpt-oss-20b:groq"
-    api_key=os.environ["HF_TOKEN"]
+    api_key=st.secrets["HF_TOKEN"]
     base_url="https://router.huggingface.co/v1"
 
     client = OpenAI(
