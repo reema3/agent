@@ -7,6 +7,8 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import kagglehub
+from sentence_transformers import SentenceTransformer
+import chromadb
 
 
 st.set_page_config(
@@ -35,6 +37,7 @@ def load_data():
     file_path = os.path.join(dataset_dir, "train.csv")
     df = pd.read_csv(file_path)
     df['Order Date'] = pd.to_datetime(df['Order Date'], dayfirst=True)
+    df['Ship Date'] = pd.to_datetime(df['Ship Date'], dayfirst=True)
     # df['Order Month'] = df['Order Date'].dt.to_period('M').astype(str)
     return df
 
@@ -58,9 +61,15 @@ def get_df_info(df):
 
     return {
         'columns' : df.columns.tolist(),
+        'shipping_modes' : df['Ship Mode'].unique().tolist() if 'Ship Mode' in df.columns else [],
+        'segments' : df['Segment'].unique().tolist() if 'Segment' in df.columns else [],
         'countries' : df['Country'].unique().tolist() if 'Country' in df.columns else [],
+        'cities' : df['City'].unique().tolist() if 'City' in df.columns else [],
+        'states' : df['State'].unique().tolist() if 'State' in df.columns else [],
+        'regions' : df['Region'].unique().tolist() if 'Region' in df.columns else [],
         'products' : df['Product Name'].unique().tolist() if 'Product Name' in df.columns else [],
         'categories' : df['Category'].unique().tolist() if 'Category' in df.columns else [],
+        'sub_categories' : df['Sub-Category'].unique().tolist() if 'Sub-Category' in df.columns else [],
         'date_range' : date_range,
         'shape' : df.shape,
         'metric' : ['Sales']
@@ -73,7 +82,7 @@ def user_wants_chart(question):
 
     chart_keywords = [
         'chart','plot','graph','visualize','visualization',
-        'show me a chart', 'show chart', 'plot this','graph this',
+        'show me a chart', 'show chart', 'plot','graph',
         'pie chart','bar chart','line chart','trend','show me visually',
         'visual','diagram'
     ]
@@ -157,21 +166,84 @@ def generate_chart_from_result(result, question):
                 )
             return fig
         
-
+        #CASE 4: Simple Series (Like Sales by Country)
+        elif isinstance(result, pd.Series) and len(result) > 1:
+            # Check if it's better as pie or bar
+            if any(word in question_lower for word in distribution_keywords) and len(result) <= 10:
+                # Pie chart for distribution
+                fig = px.pie(
+                    values=result.values,
+                    names=result.index,
+                    title="Distribution Analysis"
+                )
+            else:
+                # Bar chart for comparison
+                fig = px.bar(
+                    x=result.index,
+                    y=result.values,
+                    title="Comparison Analysis",
+                    color=result.values,
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(
+                    xaxis_title=result.index.name or "Category",
+                    yaxis_title="Value",
+                    height=400
+                )
+            return fig
+    
     except Exception as e:
         print(f"Chart generation error {e}")
         return None
 
-def generate_pandas_code(client, llm_model,question,df_info):
+def generate_pandas_code(client, llm_model,question,df_info, vector_db = None):
+
+    vector_context = ""
+
+    if vector_db and vector_db is not None:
+        try:
+            embedding_model = vector_db['embedding_model']
+            query_collection = vector_db['collections']['queries']
+
+            question_embedding = embedding_model.encode(question).tolist()
+
+            similar_queries = query_collection.query(
+                question_embedding = [question_embedding],
+                n_result = 3,
+                include = ['metadatas','documents']
+            )
+
+            if similar_queries['documents'] and len(similar_queries['documents'][0])>0:
+                vector_context = "\nSimilar past queries\n"
+                for doc, metadata in zip(similar_queries['documents'][0],similar_queries['metadatas'][0]):
+                    if metadata:
+                        vector_context += f"Question: {doc}\n"
+                        if 'code' in metadata:
+                            vector_context += f"Code that worked: {metadata['code'][:150]}...\n"
+                        if 'business_insight' in metadata:
+                            vector_context += f"Business Insight: {metadata['business_insight']}...\n"
+                        vector_context += "\n"
+        except Exception as e:
+            st.warning(f"Vector search failed: {e}")
+
 
     prompt = f"""
     You have a pandas a Dataframe called 'df' with these columns: {df_info['columns']}
+    Shipping modes available: {df_info['shipping_modes']}
+    Segments available: {df_info['segments']}
+    Cities available: {df_info['cities']}
     Countries available: {df_info['countries']}
     Products available: {df_info['products']}
     Categories available: {df_info['categories']}
+    States available: {df_info['states']}
+    Regions available: {df_info['regions']}
+    Sub Categories available: {df_info['sub_categories']}
     Date range: {df_info['date_range']}
 
-    The user asks: "{question}"
+    Similar historical queries:
+    {vector_context}
+
+    Current question: "{question}"
 
     Write python code using pandas to answer this question.
     The code should:
@@ -192,7 +264,7 @@ def generate_pandas_code(client, llm_model,question,df_info):
     response = client.chat.completions.create(
         model = llm_model,
         messages = [
-            {"role":"system", "content":"You are a pandas expert.Return only valid python code"},
+            {"role":"system", "content":"You are a pandas expert.Return only valid python code.Your sole function is to generate a single line of runnable Python code that starts with 'result = ' to answer the user's question. DO NOT use any markdown formatting (e.g., ```python) or JSON/tool call formatting. Return ONLY the code string."},
             {"role":"user","content":prompt}
         ]
     )
@@ -216,6 +288,88 @@ def execute_pandas_code(code,df):
         return namespace.get('result'), None
     except Exception as e:
         return None, str(e)
+
+def interpret_result(client,llm_model,question,code,result,df_info):
+
+    if result is None:
+        return "No result to interpret"
+    
+    result_summary = ""
+    if isinstance(result,pd.DataFrame):
+        result_summary = f"Dataframe with {len(result)} rows and columns: {result.columns.tolist()}\nFirst few rows:\n{result.head().to_string()}"
+    elif isinstance(result,pd.Series):
+        result_summary = f"Series with {len(result)} items:\n{result.head().to_string()}"
+    elif isinstance(result,(int,float)):
+        result_summary = f"Numeric value:{result:,.2f}"
+    else:
+        result_summary = str(result)[:500]
+
+    prompt = f"""
+    The user asked: "{question}"
+
+    The result is:
+    {result_summary}
+
+    Please provide a brief, business-friendly interpretation of this result.
+    Focus on:
+    1. What the number mean in practical terms
+    2. Any notable patterns or insights
+    3. Business implications if relevant
+
+    Keep it concise (2-3 sentences max) and technical jargon.
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model = llm_model,
+            messages = [
+                {"role": "system", "content":"You are a business analyst who explains the data insights clearly. Keep responses under 3 sentences."},
+                {"role":"user","content":prompt}
+            ]
+        )
+        interpretation = response.choices[0].message.content.strip()
+
+        if not interpretation:
+            if isinstance(result,(int,float)):
+                interpretation = f"The result is {result:,.2f}"
+            elif isinstance(result,pd.DataFrame):
+                interpretation = f"Retrieved {len(result)} records with data across {len(result.columns)} metrics"
+            elif isinstance(result,pd.Series):
+                interpretation = f"Found {len(result)} data points in result"
+            else:
+                interpretation = "Query executed successfully"
+
+        return interpretation
+    
+    except Exception as e:
+        if isinstance(result,(int,float)):
+                return f"The result is {result:,.2f}"
+        elif isinstance(result,pd.DataFrame):
+            return f"Retrieved {len(result)} records with data across {len(result.columns)} metrics"
+        elif isinstance(result,pd.Series):
+            return f"Found {len(result)} data points in result"
+        else:
+            return "Query executed successfully"
+
+def init_vector_db():
+    try:
+        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+        client = chromadb.Client()
+
+        collections = {}
+        collections['queries'] = client.get_or_create_collection("query_history")
+        collections['insights'] = client.get_or_create_collection("inisghts_history")
+
+        return{
+            'client' :client,
+            'embedding_model': embedding_model,
+            'collections': collections
+        }
+
+    except Exception as e:
+        st.warning(f"Vector DB failed: {e}")
+        return None
 
 
 def main():
@@ -255,6 +409,10 @@ def main():
 
     client, llm_model = init_conenctions()
 
+    if 'vector_db' not in st.session_state:
+        st.session_state.vector_db = init_vector_db()
+        st.success("Vector DB initialized")
+
     try:
         df =load_data()
         df_info = get_df_info(df)
@@ -281,6 +439,10 @@ def main():
                         else:
                             st.success("Answer: ")
 
+                            interpretation = interpret_result(client,llm_model,user_question,code,result,df_info)
+
+                            st.success(f"Business Insights: {interpretation}")
+
                             with st.expander("Generated Code"):
                                 st.code(code,language='python')
 
@@ -293,6 +455,44 @@ def main():
                                    st.plotly_chart(chart, use_container_width=True)
                                 else:
                                     st.info(" Unable to generate a chart for this data type. Try a different query.")
+
+                            if st.session_state.vector_db:
+                                try:
+                                    import hashlib
+
+                                    query_collection = st.session_state.vector_db['collections']['queries']
+                                    question_normalized = user_question.lower().strip()
+                                    query_id = hashlib.md5(question_normalized.encode()).hexdigest()
+
+                                    existing = query_collection.get(ids=[query_id])
+
+                                    metadata = {
+                                        'code': code,
+                                        'timestamp':datetime.now().isoformat(),
+                                        'question':user_question,
+                                        'business_insight':interpretation,
+                                        'success':True
+                                    }
+
+                                    if existing['ids']:
+                                        metadata['update_count'] = existing['metadatas'][0].get('update_count',1) +1
+                                        query_collection.update(
+                                            ids = [query_id],
+                                            metadata = [metadata]
+                                        )
+                                        st.sidebar.info("Update Q&A and insight")
+                                    else:
+                                        metadata['update_count'] = 1
+                                        query_collection.add(
+                                            documents = [user_question],
+                                            ids = [query_id],
+                                            metadatas = [metadata]
+                                        )
+                                        st.sidebar.success("Stored Q&A and insight")
+
+                                except Exception as e:
+                                    st.sidebar.warning(f'Storage issue: {e}')
+
             
             # st.sidebar.write(df.columns)
             st.markdown("---")
