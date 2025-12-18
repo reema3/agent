@@ -117,7 +117,7 @@ This approach allows:
 	•	Faster exploratory analysis without manual coding
 
 <h2> Screenshot </h2>
-<img width="2850" height="1612" alt="image" src="https://github.com/user-attachments/assets/a0da5453-faf0-400e-95aa-40e96344db6d" />
+<img width="2864" height="1572" alt="image" src="https://github.com/user-attachments/assets/e465ea68-c120-4f72-bb50-91b650f32f61" />
 https://analyticsassistant.streamlit.app/
 
 <h2> 🎯 Why I Built This</h2>
