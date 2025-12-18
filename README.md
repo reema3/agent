@@ -12,19 +12,26 @@ This project is my attempt to build a lightweight **LLM-powered analytics assist
 
 …and the app generates the analysis, charts, and explanations automatically.
 
-<h2>🚀 Features </h2>
+<h2>🚀 Key Features </h2>
 
-<h3>🔹 Natural-Language Data Exploration</h3>
+<h3>🔹 Natural-Language to Data Analysis</h3>
 
-Ask questions in plain English. The app interprets your query and returns:
+- Users ask questions in plain English
+- The app interprets intent and runs the appropriate data operations
+- No need to write code or queries
 
-	•	Aggregations
-  
-	•	Trends
-  
-	•	Plots / charts
-  
-	•	Breakdown tables
+<h3> 🔹 Business Insight Generation </h3>
+
+- Raw outputs are converted into **business-friendly insights**
+- Focus on *what the numbers mean*, not just the numbers themselves
+
+<h3>🔹 Insight Memory using Vector Database </h3>
+
+- User questions and generated insights are stored as embeddings
+- When a similar question is asked again, the system can:
+  - Reuse prior insights
+  - Improve consistency and response quality
+- Demonstrates a simple **RAG-style feedback loop**
 
 <h3>🔹 Streamlit UI</h3>
 
@@ -34,25 +41,18 @@ A fast, clean web interface built with Streamlit that runs locally or can be dep
 
 Uses an LLM backend to:
 
-	•	Understand user intent
-  
-	•	Validate and structure the query
-  
-	•	Generate Python code on the fly
-  
-	•	Execute that code safely on the dataset
+- Understand user intent
+- Validate and structure the query
+- Generate Python code on the fly
+- Execute that code safely on the dataset
 
 <h3>🔹 Visual Analytics</h3>
 
 Supports:
-
-	•	Bar charts
-  
-	•	Line charts
-  
-	•	Time series
-  
-	•	Category breakdowns
+- Bar charts
+- Line charts
+- Time series
+- Category breakdowns
 
 (Using matplotlib / plotly.)
 
@@ -71,6 +71,8 @@ App uses the Superstore Sales dataset, a popular public dataset used in Tableau 
 • **Matplotlib / Plotly** — Visualizations
 
 • **OpenAI (or any LLM of choice)** — Natural-language understanding
+
+• **Vector Database** (e.g. FAISS / Chroma) – Insight memory
 
 • **Virtual Environment** (venv)
 
@@ -127,19 +129,7 @@ This project helped me understand:
 	•	Prompt engineering
   
 	•	Code-generation agents
+	
+	•	Explore how vector memory can improve analytical systems
   
 	•	Building simple data apps end-to-end
-
-<h2>📌 What’s Next</h2>
-
-Planned enhancements:
-
-	•	Automated Insights
-  
-	•	Python Code explanations
-	
-	•	Chat History
-  
-	•	Provide memory to LLM
-  
-	•	Deploy
